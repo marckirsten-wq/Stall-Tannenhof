@@ -131,14 +131,7 @@ const TannenhofLogo = ({ size = "md" }) => {
     />
   );
 };
-}
 
-  return (
-    <div className="w-8 h-8 rounded-lg bg-emerald-900 text-white flex items-center justify-center">
-      <Trees className="w-5 h-5 text-emerald-100" />
-    </div>
-  );
-};
 
 export default function TannenhofStallApp() {
   const [fbUser, setFbUser] = useState(null);
