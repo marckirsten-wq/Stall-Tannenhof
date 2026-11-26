@@ -158,13 +158,9 @@ export default function TannenhofStallApp() {
   const [horses, setHorses] = useState([]);
   const [messages, setMessages] = useState([]);
   const [shifts, setShifts] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [damages, setDamages] = useState([]);
 
   // UI State
   const [activeTab, setActiveTab] = useState('home');
-  const [planSubTab, setPlanSubTab] = useState('dienste');
   const [selectedMonthIdx, setSelectedMonthIdx] = useState(0);
   const [toast, setToast] = useState(null);
   const [shiftPickerSlot, setShiftPickerSlot] = useState(null);
@@ -172,9 +168,6 @@ export default function TannenhofStallApp() {
   // Form States
   const [newMessage, setNewMessage] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newBooking, setNewBooking] = useState({ type: 'Reitplatz', date: '', startTime: '', endTime: '', note: '' });
-  const [newRequest, setNewRequest] = useState({ task: TANNENHOF_CONFIG.shiftLabel, startDate: '', endDate: '', note: '' });
-  const [newDamage, setNewDamage] = useState({ location: '', description: '' });
 
   // Horse Form State
   const [isEditingHorse, setIsEditingHorse] = useState(false);
@@ -223,9 +216,6 @@ export default function TannenhofStallApp() {
     unsubs.push(subscribe('horses', setHorses));
     unsubs.push(subscribe('messages', setMessages));
     unsubs.push(subscribe('shifts', setShifts));
-    unsubs.push(subscribe('bookings', setBookings));
-    unsubs.push(subscribe('requests', setRequests));
-    unsubs.push(subscribe('damages', setDamages));
 
     return () => unsubs.forEach(unsub => unsub());
   }, [fbUser]);
@@ -369,18 +359,6 @@ export default function TannenhofStallApp() {
     await syncToFirebase('messages', id, null, true);
   };
 
-  const resolveDamage = async (id) => {
-    setDamages(prev => prev.map(d => d.id === id ? { ...d, status: 'resolved', resolvedBy: currentUser.name } : d));
-    showToast('Schaden als behoben markiert!');
-    await syncToFirebase('damages', id, { status: 'resolved', resolvedBy: currentUser.name });
-  };
-
-  const resolveRequest = async (id) => {
-    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'resolved', resolvedBy: currentUser.name } : r));
-    showToast('Dienst übernommen!');
-    await syncToFirebase('requests', id, { status: 'resolved', resolvedBy: currentUser.name });
-  };
-
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -477,7 +455,7 @@ export default function TannenhofStallApp() {
     await syncToFirebase('horses', horseId, updates);
   };
 
-  // --- DIENSTPLAN: 1 ABÄPPELDIENST PRO TAG ---
+  // --- DIENSTPLAN: JEDER DARF FÜR JEDES PFERD EINTRAGEN ---
   const addShift = async (date, horse = null) => {
     const newId = Date.now().toString();
     const shiftData = {
@@ -496,15 +474,12 @@ export default function TannenhofStallApp() {
   };
 
   const handleOpenShiftPicker = (date, label) => {
-    const myHorses = sortedHorses.filter(h => canEditHorse(h));
-    if (myHorses.length === 0) {
+    // Wenn noch keine Pferde angelegt sind, direkt unter dem eigenen Namen eintragen
+    if (sortedHorses.length === 0) {
       addShift(date, null);
       return;
     }
-    if (myHorses.length === 1 && currentUser.role !== 'admin') {
-      addShift(date, myHorses[0]);
-      return;
-    }
+    // Ansonsten immer Auswahl aller Pferde anzeigen, damit jeder für jedes Pferd eintragen kann
     setShiftPickerSlot({ date, label });
   };
 
@@ -525,53 +500,9 @@ export default function TannenhofStallApp() {
     await syncToFirebase('shifts', shiftId, null, true);
   };
 
-  const submitBooking = async (e) => {
-    e.preventDefault();
-    if (!newBooking.date || !newBooking.startTime || !newBooking.endTime) {
-      showToast('Bitte alle Zeiten ausfüllen!', true);
-      return;
-    }
-    const newId = Date.now().toString();
-    const bookingData = { ...newBooking, id: newId, userId: currentUser.id, userName: currentUser.name, createdAt: new Date().toISOString() };
-
-    setBookings(prev => [...prev, bookingData]);
-    setNewBooking({ type: 'Reitplatz', date: '', startTime: '', endTime: '', note: '' });
-    showToast('Anlage erfolgreich gebucht!');
-    await syncToFirebase('bookings', newId, bookingData);
-  };
-
-  const submitRequest = async (e) => {
-    e.preventDefault();
-    const newId = Date.now().toString();
-    const requestData = { ...newRequest, id: newId, userId: currentUser.id, userName: currentUser.name, status: 'open', createdAt: new Date().toISOString() };
-
-    setRequests(prev => [...prev, requestData]);
-    setNewRequest({ task: TANNENHOF_CONFIG.shiftLabel, startDate: '', endDate: '', note: '' });
-    showToast('Vertretungsgesuch gepostet!');
-    setActiveTab('home');
-    await syncToFirebase('requests', newId, requestData);
-  };
-
-  const submitDamage = async (e) => {
-    e.preventDefault();
-    const newId = Date.now().toString();
-    const damageData = { ...newDamage, id: newId, userId: currentUser.id, userName: currentUser.name, status: 'open', createdAt: new Date().toISOString() };
-
-    setDamages(prev => [...prev, damageData]);
-    setNewDamage({ location: '', description: '' });
-    showToast('Schaden erfolgreich gemeldet!');
-    setActiveTab('home');
-    await syncToFirebase('damages', newId, damageData);
-  };
-
   // --- DERIVED STATE ---
-  const openDamages = damages.filter(d => d.status === 'open');
-  const openRequests = requests.filter(r => r.status === 'open');
   const sortedMessages = [...messages].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const hasNotifications = openDamages.length > 0 || openRequests.length > 0;
-
   const sortedHorses = [...horses].sort((a, b) => a.name.localeCompare(b.name));
-  const eligibleShiftHorses = sortedHorses.filter(h => canEditHorse(h));
   const blanketHorses = sortedHorses.filter(h => h.activeBlanketId);
   const nightBlanketHorses = sortedHorses.filter(h => getNightBlanketId(h));
   const nightOnlyHorses = sortedHorses.filter(h => !h.activeBlanketId && getNightBlanketId(h));
@@ -646,7 +577,7 @@ export default function TannenhofStallApp() {
         </div>
       )}
 
-      {/* MODAL: PFERD FÜR DIENST AUSWÄHLEN */}
+      {/* MODAL: PFERD FÜR DIENST AUSWÄHLEN (ALLE PFERDE VERFÜGBAR) */}
       {shiftPickerSlot && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4"
@@ -673,7 +604,7 @@ export default function TannenhofStallApp() {
             </div>
 
             <div className="space-y-2 max-h-72 overflow-y-auto">
-              {eligibleShiftHorses.map(h => (
+              {sortedHorses.map(h => (
                 <button
                   key={h.id}
                   type="button"
@@ -691,7 +622,7 @@ export default function TannenhofStallApp() {
                     <div>
                       <span className="font-extrabold text-sm text-emerald-950 block">{h.name}</span>
                       <span className="text-[11px] text-emerald-700 font-medium">
-                        Eintrag durch {currentUser.name}
+                        Dienst übernimmt: {currentUser.name}
                       </span>
                     </div>
                   </div>
@@ -741,17 +672,45 @@ export default function TannenhofStallApp() {
             {(() => {
               const todayObj = twoMonthsData[0]?.days.find(d => d.isToday);
               const todayShift = todayObj ? shifts.find(s => s.date === todayObj.iso) : null;
+              const matchedHorse = todayShift?.horseId
+                ? horses.find(h => h.id === todayShift.horseId)
+                : (todayShift?.horseName ? horses.find(h => (h.name || '').trim().toLowerCase() === todayShift.horseName.trim().toLowerCase()) : null);
+
               return (
                 <div className="bg-emerald-800 text-white border border-emerald-900 rounded-2xl p-4 shadow-md flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-200 block">
-                      Heute • {todayObj?.label}
-                    </span>
-                    <h3 className="font-extrabold text-base mt-0.5">
-                      {todayShift
-                        ? `${TANNENHOF_CONFIG.shiftLabel}: ${todayShift.horseName ? `${todayShift.horseName} (${todayShift.userName})` : todayShift.userName}`
-                        : `${TANNENHOF_CONFIG.shiftLabel} noch frei`}
-                    </h3>
+                  <div className="flex items-center gap-3 min-w-0">
+                    {todayShift?.horseName && (
+                      matchedHorse?.image ? (
+                        <img src={matchedHorse.image} alt={todayShift.horseName} className="w-12 h-12 rounded-full object-cover border-2 border-emerald-300 shrink-0" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-emerald-950 text-white text-lg flex items-center justify-center border-2 border-emerald-400 shrink-0">
+                          🐴
+                        </div>
+                      )
+                    )}
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-200 block">
+                        Heute • {todayObj?.label}
+                      </span>
+                      {todayShift ? (
+                        todayShift.horseName ? (
+                          <div className="mt-0.5">
+                            <h3 className="font-black text-base leading-tight truncate">{todayShift.horseName}</h3>
+                            <p className="text-xs text-emerald-200 font-medium truncate">
+                              {TANNENHOF_CONFIG.shiftLabel}: {todayShift.userName}
+                            </p>
+                          </div>
+                        ) : (
+                          <h3 className="font-extrabold text-base mt-0.5 truncate">
+                            {TANNENHOF_CONFIG.shiftLabel}: {todayShift.userName}
+                          </h3>
+                        )
+                      ) : (
+                        <h3 className="font-extrabold text-base mt-0.5">
+                          {TANNENHOF_CONFIG.shiftLabel} noch frei
+                        </h3>
+                      )}
+                    </div>
                   </div>
                   {!todayShift && todayObj && (
                     <button
@@ -764,26 +723,6 @@ export default function TannenhofStallApp() {
                 </div>
               );
             })()}
-
-            {hasNotifications && (
-              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-sm">
-                <h3 className="text-amber-900 font-extrabold text-sm mb-3 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Wichtige Meldungen</h3>
-                <div className="space-y-2">
-                  {openDamages.map(d => (
-                    <div key={d.id} className="bg-white border border-gray-300 p-3 rounded-xl text-sm flex justify-between items-start gap-2 shadow-sm">
-                      <div><strong className="text-black">{d.location}:</strong> <span className="text-black">{d.description}</span><br /><span className="text-[10px] text-stone-500">Gemeldet von {d.userName}</span></div>
-                      <button onClick={() => resolveDamage(d.id)} className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow shrink-0">Behoben</button>
-                    </div>
-                  ))}
-                  {openRequests.map(r => (
-                    <div key={r.id} className="bg-white border border-gray-300 p-3 rounded-xl text-sm flex justify-between items-start gap-2 shadow-sm">
-                      <div><strong className="text-amber-700">{r.task} gesucht</strong> <br /><span className="text-black font-bold">{r.startDate} bis {r.endDate}</span><br /><span className="text-[10px] text-stone-500">Von {r.userName} {r.note && `(${r.note})`}</span></div>
-                      <button onClick={() => resolveRequest(r.id)} className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow shrink-0">Übernehmen</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* OPTIONALER DECKENSERVICE */}
             {TANNENHOF_CONFIG.showBlanketService && (
@@ -1145,7 +1084,7 @@ export default function TannenhofStallApp() {
 
                   <div className="pt-3 border-t border-gray-200">
                     <h3 className="font-extrabold text-sm mb-3 text-black">Team (Berechtigungen)</h3>
-                    <p className="text-xs text-stone-500 mb-3">Trage den exakten Namen des App-Nutzers ein, damit er/sie das Pferd im Dienstplan auswählen und bearbeiten darf.</p>
+                    <p className="text-xs text-stone-500 mb-3">Trage den exakten Namen des App-Nutzers ein, damit er/sie die Pferdeakte bearbeiten darf.</p>
                     {(horseFormData.team || []).map((t, idx) => (
                       <div key={t.id} className="flex flex-col gap-2 mb-4 bg-stone-50 p-3 rounded-xl border border-gray-300 shadow-sm">
                         <div className="flex justify-between items-center">
@@ -1185,180 +1124,121 @@ export default function TannenhofStallApp() {
           </div>
         )}
 
-        {/* TAB: PLÄNE (2-MONATS-ÜBERSICHT FÜR ABÄPPELDIENST) */}
+        {/* TAB: PLÄNE (DIREKT 2-MONATS-ABÄPPELPLAN OHNE ANLAGENBELEGUNG) */}
         {activeTab === 'pläne' && (
           <div className="space-y-4">
-            <div className="flex bg-stone-200 p-1.5 rounded-xl shadow-inner border border-gray-300">
-              <button onClick={() => setPlanSubTab('dienste')} className={`flex-1 py-2 text-sm font-bold rounded-lg border transition-all ${planSubTab === 'dienste' ? 'bg-white border-gray-300 text-emerald-900 shadow-sm' : 'bg-transparent border-transparent text-stone-600 hover:text-black'}`}>
-                {TANNENHOF_CONFIG.shiftLabel} (2 Monate)
-              </button>
-              <button onClick={() => setPlanSubTab('belegung')} className={`flex-1 py-2 text-sm font-bold rounded-lg border transition-all ${planSubTab === 'belegung' ? 'bg-white border-gray-300 text-emerald-900 shadow-sm' : 'bg-transparent border-transparent text-stone-600 hover:text-black'}`}>
-                Anlagenbelegung
-              </button>
+            <div className="grid grid-cols-2 gap-2">
+              {twoMonthsData.map((month, idx) => {
+                const filledCount = month.days.filter(d => shifts.some(s => s.date === d.iso)).length;
+                return (
+                  <button
+                    key={month.id}
+                    onClick={() => setSelectedMonthIdx(idx)}
+                    className={`p-3 rounded-2xl border text-left transition-all ${
+                      selectedMonthIdx === idx
+                        ? 'bg-emerald-800 text-white border-emerald-900 shadow-md'
+                        : 'bg-white text-black border-gray-300 shadow-sm hover:bg-stone-50'
+                    }`}
+                  >
+                    <div className="font-black text-sm">{month.title}</div>
+                    <div className={`text-[11px] font-semibold mt-0.5 ${selectedMonthIdx === idx ? 'text-emerald-200' : 'text-stone-500'}`}>
+                      {filledCount} / {month.days.length} Tage besetzt
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
-            {planSubTab === 'dienste' && (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  {twoMonthsData.map((month, idx) => {
-                    const filledCount = month.days.filter(d => shifts.some(s => s.date === d.iso)).length;
-                    return (
-                      <button
-                        key={month.id}
-                        onClick={() => setSelectedMonthIdx(idx)}
-                        className={`p-3 rounded-2xl border text-left transition-all ${
-                          selectedMonthIdx === idx
-                            ? 'bg-emerald-800 text-white border-emerald-900 shadow-md'
-                            : 'bg-white text-black border-gray-300 shadow-sm hover:bg-stone-50'
-                        }`}
-                      >
-                        <div className="font-black text-sm">{month.title}</div>
-                        <div className={`text-[11px] font-semibold mt-0.5 ${selectedMonthIdx === idx ? 'text-emerald-200' : 'text-stone-500'}`}>
-                          {filledCount} / {month.days.length} Tage besetzt
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="space-y-2 mt-3">
+              {twoMonthsData[selectedMonthIdx]?.days.map(day => {
+                const dayShift = shifts.find(s => s.date === day.iso);
+                const matchedHorse = dayShift?.horseId
+                  ? horses.find(h => h.id === dayShift.horseId)
+                  : (dayShift?.horseName ? horses.find(h => (h.name || '').trim().toLowerCase() === dayShift.horseName.trim().toLowerCase()) : null);
 
-                <div className="space-y-2 mt-3">
-                  {twoMonthsData[selectedMonthIdx]?.days.map(day => {
-                    const dayShift = shifts.find(s => s.date === day.iso);
-                    const matchedHorse = dayShift?.horseId
-                      ? horses.find(h => h.id === dayShift.horseId)
-                      : (dayShift?.horseName ? horses.find(h => (h.name || '').trim().toLowerCase() === dayShift.horseName.trim().toLowerCase()) : null);
+                return (
+                  <div
+                    key={day.iso}
+                    className={`rounded-2xl p-3 border flex items-center justify-between gap-3 transition-colors ${
+                      day.isToday
+                        ? 'bg-emerald-50/80 border-emerald-500 shadow-md ring-1 ring-emerald-500'
+                        : day.isWeekend
+                          ? 'bg-stone-50 border-gray-300 shadow-sm'
+                          : 'bg-white border-gray-300 shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 shrink-0 min-w-[105px]">
+                      <div className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center font-black text-xs border ${
+                        day.isToday
+                          ? 'bg-emerald-800 text-white border-emerald-900'
+                          : day.isWeekend
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : 'bg-stone-100 text-black border-gray-300'
+                      }`}>
+                        <span>{String(day.dayNum).padStart(2, '0')}</span>
+                      </div>
+                      <div>
+                        <span className="font-black text-sm text-black block leading-tight">{day.weekday}</span>
+                        {day.isToday ? (
+                          <span className="text-[10px] font-extrabold text-emerald-700 uppercase">Heute</span>
+                        ) : (
+                          <span className="text-[10px] text-stone-500 font-medium">{day.label.split(' ')[1]}</span>
+                        )}
+                      </div>
+                    </div>
 
-                    return (
-                      <div
-                        key={day.iso}
-                        className={`rounded-2xl p-3 border flex items-center justify-between gap-3 transition-colors ${
-                          day.isToday
-                            ? 'bg-emerald-50/80 border-emerald-500 shadow-md ring-1 ring-emerald-500'
-                            : day.isWeekend
-                              ? 'bg-stone-50 border-gray-300 shadow-sm'
-                              : 'bg-white border-gray-300 shadow-sm'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 shrink-0 min-w-[105px]">
-                          <div className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center font-black text-xs border ${
-                            day.isToday
-                              ? 'bg-emerald-800 text-white border-emerald-900'
-                              : day.isWeekend
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-stone-100 text-black border-gray-300'
-                          }`}>
-                            <span>{String(day.dayNum).padStart(2, '0')}</span>
-                          </div>
-                          <div>
-                            <span className="font-black text-sm text-black block leading-tight">{day.weekday}</span>
-                            {day.isToday ? (
-                              <span className="text-[10px] font-extrabold text-emerald-700 uppercase">Heute</span>
+                    <div className="flex-1 min-w-0">
+                      {dayShift ? (
+                        <div className="flex justify-between items-center p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 shadow-sm">
+                          <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                            {dayShift.horseName ? (
+                              <>
+                                {matchedHorse?.image ? (
+                                  <img src={matchedHorse.image} alt={dayShift.horseName} className="w-9 h-9 rounded-full object-cover border border-emerald-400 shrink-0" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-emerald-800 text-white text-sm flex items-center justify-center shrink-0">
+                                    🐴
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <span className="text-sm font-black text-emerald-950 block truncate">{dayShift.horseName}</span>
+                                  <span className="text-xs font-semibold text-emerald-800 block truncate">{dayShift.userName}</span>
+                                </div>
+                              </>
                             ) : (
-                              <span className="text-[10px] text-stone-500 font-medium">{day.label.split(' ')[1]}</span>
+                              <span className="truncate block text-sm font-extrabold text-emerald-950">{dayShift.userName}</span>
                             )}
                           </div>
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          {dayShift ? (
-                            <div className="flex justify-between items-center text-xs font-bold p-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 shadow-sm">
-                              <div className="flex items-center gap-2 min-w-0 pr-1">
-                                {dayShift.horseName ? (
-                                  <>
-                                    {matchedHorse?.image ? (
-                                      <img src={matchedHorse.image} alt={dayShift.horseName} className="w-7 h-7 rounded-full object-cover border border-emerald-400 shrink-0" />
-                                    ) : (
-                                      <div className="w-7 h-7 rounded-full bg-emerald-800 text-white text-xs flex items-center justify-center shrink-0">
-                                        🐴
-                                      </div>
-                                    )}
-                                    <div className="min-w-0">
-                                      <span className="font-black text-emerald-950 block truncate">{dayShift.horseName}</span>
-                                      <span className="text-[10px] font-medium text-emerald-700 block truncate">{dayShift.userName}</span>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <span className="truncate block text-sm font-extrabold text-emerald-950">{dayShift.userName}</span>
-                                )}
-                              </div>
-                              {canRemoveShift(dayShift) && (
-                                <button
-                                  onClick={() => removeShift(dayShift.id)}
-                                  className="text-rose-600 bg-white border border-rose-200 rounded-lg px-2 py-1 hover:bg-rose-100 shrink-0"
-                                  title="Austragen"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          ) : (
+                          {canRemoveShift(dayShift) && (
                             <button
-                              onClick={() => handleOpenShiftPicker(day.iso, day.label)}
-                              className="w-full text-left text-xs font-bold text-emerald-800 bg-white border border-dashed border-emerald-400 hover:bg-emerald-50 p-2.5 rounded-xl flex items-center justify-between transition-colors"
+                              onClick={() => removeShift(dayShift.id)}
+                              className="text-rose-600 bg-white border border-rose-200 rounded-lg px-2 py-1 hover:bg-rose-100 shrink-0"
+                              title="Austragen"
                             >
-                              <span>Frei – Eintragen</span>
-                              <Plus className="w-4 h-4 text-emerald-700" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {planSubTab === 'belegung' && (
-              <div className="space-y-4">
-                <form onSubmit={submitBooking} className="bg-white p-4 rounded-2xl border border-gray-300 shadow-sm space-y-4">
-                  <h3 className="font-black text-base text-black border-b border-gray-200 pb-2">Neue Reservierung</h3>
-                  <div>
-                    <label className="text-xs font-bold text-stone-600 mb-1 block">Anlage auswählen</label>
-                    <select value={newBooking.type} onChange={e => setNewBooking({ ...newBooking, type: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 font-bold">
-                      <option>Reitplatz</option>
-                      <option>Krankenpaddock</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-stone-600 mb-1 block">Datum</label>
-                    <input type="date" required value={newBooking.date} onChange={e => setNewBooking({ ...newBooking, date: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600" />
-                  </div>
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-stone-600 mb-1 block">Von Uhrzeit</label>
-                      <input type="time" required value={newBooking.startTime} onChange={e => setNewBooking({ ...newBooking, startTime: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600" />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs font-bold text-stone-600 mb-1 block">Bis Uhrzeit</label>
-                      <input type="time" required value={newBooking.endTime} onChange={e => setNewBooking({ ...newBooking, endTime: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600" />
+                      ) : (
+                        <button
+                          onClick={() => handleOpenShiftPicker(day.iso, day.label)}
+                          className="w-full text-left text-xs font-bold text-emerald-800 bg-white border border-dashed border-emerald-400 hover:bg-emerald-50 p-2.5 rounded-xl flex items-center justify-between transition-colors"
+                        >
+                          <span>Frei – Eintragen</span>
+                          <Plus className="w-4 h-4 text-emerald-700" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <button type="submit" className="w-full bg-emerald-800 text-white font-bold py-3.5 rounded-xl shadow-md mt-2 hover:bg-emerald-900 transition-colors">Jetzt Buchen</button>
-                </form>
-
-                <div className="space-y-3">
-                  <h3 className="font-extrabold text-sm text-stone-600 pl-1">Aktuelle Belegungen</h3>
-                  {[...bookings].sort((a, b) => a.date.localeCompare(b.date)).map(b => (
-                    <div key={b.id} className="bg-white p-4 rounded-xl border border-gray-300 shadow-sm text-sm flex flex-col gap-1">
-                      <div className="font-black text-emerald-900 text-base">{b.type}</div>
-                      <div className="text-black font-bold flex items-center gap-2">
-                        <span>📅 {new Date(b.date).toLocaleDateString('de-DE')}</span>
-                        <span>⏰ {b.startTime} - {b.endTime} Uhr</span>
-                      </div>
-                      <div className="text-stone-500 text-xs mt-1">Gebucht von: {b.userName}</div>
-                    </div>
-                  ))}
-                  {bookings.length === 0 && <p className="text-stone-500 text-sm">Derzeit keine Anlagen gebucht.</p>}
-                </div>
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* TAB: MEHR */}
+        {/* TAB: MEHR (NUR KONTO & PASSWORT) */}
         {activeTab === 'mehr' && (
           <div className="space-y-5">
-
             <section className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm">
               <h2 className="font-black text-emerald-900 text-lg mb-4 flex items-center gap-2 border-b border-emerald-100 pb-2"><ShieldCheck className="w-5 h-5" /> Mein Passwort ändern</h2>
               <form onSubmit={handlePasswordChange} className="space-y-4">
@@ -1372,47 +1252,11 @@ export default function TannenhofStallApp() {
             </section>
 
             <section className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm">
-              <h2 className="font-black text-amber-900 text-lg mb-4 flex items-center gap-2 border-b border-amber-100 pb-2">Vertretung gesucht</h2>
-              <form onSubmit={submitRequest} className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-stone-600 mb-1 block">Welche Aufgabe?</label>
-                  <select value={newRequest.task} onChange={e => setNewRequest({ ...newRequest, task: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-600 font-bold">
-                    <option>{TANNENHOF_CONFIG.shiftLabel}</option>
-                    <option>Misten</option>
-                    <option>Pferd versorgen</option>
-                  </select>
-                </div>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="text-xs font-bold text-stone-600 mb-1 block">Von Datum</label>
-                    <input type="date" required value={newRequest.startDate} onChange={e => setNewRequest({ ...newRequest, startDate: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-600" />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs font-bold text-stone-600 mb-1 block">Bis Datum</label>
-                    <input type="date" required value={newRequest.endDate} onChange={e => setNewRequest({ ...newRequest, endDate: e.target.value })} className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-600" />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-stone-600 mb-1 block">Notizen (z.B. Für welches Pferd?)</label>
-                  <input type="text" value={newRequest.note} onChange={e => setNewRequest({ ...newRequest, note: e.target.value })} placeholder="Kurze Info..." className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-600" />
-                </div>
-                <button type="submit" className="w-full bg-amber-700 hover:bg-amber-800 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors">Gesuch eintragen</button>
-              </form>
-            </section>
-
-            <section className="bg-white border border-gray-300 rounded-2xl p-4 shadow-sm">
-              <h2 className="font-black text-rose-900 text-lg mb-4 flex items-center gap-2 border-b border-rose-100 pb-2"><AlertTriangle className="w-5 h-5" /> Schaden / Mangel melden</h2>
-              <form onSubmit={submitDamage} className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-stone-600 mb-1 block">Ort des Schadens</label>
-                  <input type="text" required value={newDamage.location} onChange={e => setNewDamage({ ...newDamage, location: e.target.value })} placeholder="z.B. Paddock, Reitplatzzaun" className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-600" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-stone-600 mb-1 block">Genaue Beschreibung</label>
-                  <textarea required value={newDamage.description} onChange={e => setNewDamage({ ...newDamage, description: e.target.value })} placeholder="Was ist kaputt? Benötigt man Werkzeug?" className="w-full bg-white text-black border border-gray-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-600 min-h-[100px]" />
-                </div>
-                <button type="submit" className="w-full bg-rose-700 hover:bg-rose-800 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors">Mangel eintragen</button>
-              </form>
+              <h2 className="font-black text-black text-base mb-2 flex items-center gap-2"><User className="w-4 h-4 text-emerald-700" /> Angemeldet als {currentUser.name}</h2>
+              <p className="text-xs text-stone-500 mb-4">{currentUser.email}</p>
+              <button onClick={handleLogout} className="w-full bg-stone-100 hover:bg-stone-200 text-stone-800 border border-gray-300 font-bold py-3 rounded-xl transition-colors">
+                Ausloggen
+              </button>
             </section>
           </div>
         )}
@@ -1430,12 +1274,11 @@ export default function TannenhofStallApp() {
         </button>
         <button onClick={() => setActiveTab('pläne')} className={`flex flex-col items-center p-2 rounded-xl min-w-[64px] transition-colors ${activeTab === 'pläne' ? 'text-emerald-800 bg-emerald-100 font-bold' : 'text-stone-500 hover:text-emerald-700'}`}>
           <CalendarDays className={`w-6 h-6 mb-1 ${activeTab === 'pläne' ? 'stroke-2' : 'stroke-[1.5]'}`} />
-          <span className="text-[10px]">Pläne</span>
+          <span className="text-[10px]">Abäppelplan</span>
         </button>
         <button onClick={() => setActiveTab('mehr')} className={`flex flex-col items-center p-2 rounded-xl min-w-[64px] relative transition-colors ${activeTab === 'mehr' ? 'text-emerald-800 bg-emerald-100 font-bold' : 'text-stone-500 hover:text-emerald-700'}`}>
           <MoreHorizontal className={`w-6 h-6 mb-1 ${activeTab === 'mehr' ? 'stroke-2' : 'stroke-[1.5]'}`} />
           <span className="text-[10px]">Mehr</span>
-          {hasNotifications && <span className="absolute top-2 right-4 w-3 h-3 bg-rose-600 rounded-full border-2 border-white shadow-sm"></span>}
         </button>
       </nav>
       <div className="h-20" />
