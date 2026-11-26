@@ -32,11 +32,11 @@ import { getFirestore, doc, onSnapshot, collection, setDoc, deleteDoc } from 'fi
 // ⚙️ SCHNELL-KONFIGURATION FÜR JULIAS ANTWORT (Hier später einfach anpassen!)
 // ============================================================================
 const TANNENHOF_CONFIG = {
-  appName: "Stallgemeinschaft Tannenhof", // z.B. "Tannenhof" oder "Stallgemeinschaft Tannenhof"
-  shiftLabel: "Abäppeldienst",           // Bezeichnung für den täglichen Dienst
-  showBlanketService: false,             // true = Decken-Übersicht aktiv | false = ausgeblendet
-  customLogoBase64: "",                  // Hier später Base64-Logo einfügen (leer = Tannen-Icon)
-  adminEmail: "kirstenmarc@outlook.de"   // Deine Admin-E-Mail
+  appName: "Tannenhof",
+  shiftLabel: "Abäppeldienst",
+  showBlanketService: false,
+  customLogoPath: "/logo.jpeg",
+  adminEmail: "kirstenmarc@outlook.de"
 };
 
 // --- FIREBASE INITIALIZATION ---
@@ -110,27 +110,28 @@ const getNightBlanketId = (horse) => {
 
 // --- LOGO KOMPONENTE ---
 const TannenhofLogo = ({ size = "md" }) => {
-  if (TANNENHOF_CONFIG.customLogoBase64) {
-    return (
-      <img
-        src={TANNENHOF_CONFIG.customLogoBase64}
-        alt={`${TANNENHOF_CONFIG.appName} Logo`}
-        className={size === "lg" ? "w-44 h-auto mx-auto mb-2 object-contain" : "w-8 h-9 object-contain"}
-      />
-    );
-  }
-
   if (size === "lg") {
     return (
       <div className="flex flex-col items-center justify-center mb-3">
-        <div className="w-20 h-20 rounded-3xl bg-emerald-900 text-white flex items-center justify-center shadow-lg mb-3 border-2 border-emerald-700">
-          <Trees className="w-11 h-11 text-emerald-100" />
-        </div>
-        <h1 className="text-xl font-black text-emerald-950 tracking-tight">{TANNENHOF_CONFIG.appName}</h1>
-        <p className="text-xs text-stone-500 font-semibold mt-0.5">Stall-Organisation & Abäppelplan</p>
+        <img
+          src={TANNENHOF_CONFIG.customLogoPath}
+          alt={`${TANNENHOF_CONFIG.appName} Logo`}
+          className="w-44 h-44 mx-auto mb-2 rounded-3xl object-cover shadow-md border border-stone-200"
+        />
+        <p className="text-xs text-stone-500 font-semibold mt-1">Stall-Organisation & Abäppelplan</p>
       </div>
     );
   }
+
+  return (
+    <img
+      src={TANNENHOF_CONFIG.customLogoPath}
+      alt="Logo"
+      className="w-8 h-8 rounded-lg object-cover"
+    />
+  );
+};
+}
 
   return (
     <div className="w-8 h-8 rounded-lg bg-emerald-900 text-white flex items-center justify-center">
